@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { LogOut } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
@@ -170,7 +171,7 @@ const FlashAlertItem = ({
 
 // ---------- Main UserDashboard ----------
 export const UserDashboard = () => {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const { latitude, longitude, isLoading: locationLoading, error: locationError } = useGeolocation()
   const [stores, setStores] = useState<StoreWithRating[]>([])
   const [loading, setLoading] = useState(true)
@@ -292,6 +293,7 @@ export const UserDashboard = () => {
           status,
           payment_status,
           created_at,
+          vendor_note,
           inventory ( products ( name, original_price, current_discount, stores ( name ) ) )
         `)
         .eq('user_id', user.id)
@@ -686,36 +688,43 @@ export const UserDashboard = () => {
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white shadow-lg transition-all duration-300 flex flex-col`}>
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className={`font-bold text-green-700 ${!sidebarOpen && 'hidden'}`}>User Panel</h2>
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1 rounded hover:bg-gray-100">
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
-        <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
-              }`}
-            >
-              {item.icon}
-              <span className={sidebarOpen ? 'block' : 'hidden'}>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="p-4 border-t">
-          <Link
-            to="/deals"
-            className="w-full flex items-center gap-3 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-          >
-            <ShoppingBag className="w-5 h-5" />
-            <span className={sidebarOpen ? 'block' : 'hidden'}>Browse Deals</span>
-          </Link>
-        </div>
-      </aside>
+  <div className="flex items-center justify-between p-4 border-b">
+    <h2 className={`font-bold text-green-700 ${!sidebarOpen && 'hidden'}`}>User Panel</h2>
+    <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1 rounded hover:bg-gray-100">
+      {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+    </button>
+  </div>
+  <nav className="flex-1 p-4 space-y-2">
+    {navItems.map((item) => (
+      <button
+        key={item.id}
+        onClick={() => setActiveTab(item.id as any)}
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+          activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
+        }`}
+      >
+        {item.icon}
+        <span className={sidebarOpen ? 'block' : 'hidden'}>{item.label}</span>
+      </button>
+    ))}
+  </nav>
+  <div className="p-4 border-t space-y-2">
+    <Link
+      to="/deals"
+      className="w-full flex items-center gap-3 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+    >
+      <ShoppingBag className="w-5 h-5" />
+      <span className={sidebarOpen ? 'block' : 'hidden'}>Browse Deals</span>
+    </Link>
+    <button
+      onClick={signOut}
+      className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+    >
+      <LogOut className="w-5 h-5" />
+      <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
+    </button>
+  </div>
+</aside>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-6">
@@ -905,41 +914,44 @@ export const UserDashboard = () => {
 
         {/* ---------- History ---------- */}
         {activeTab === 'history' && (
-          <div>
-            <h1 className="text-2xl font-bold text-green-700 mb-4">Order History</h1>
-            <div className="bg-white rounded-xl shadow p-4">
-              {orderHistory.length === 0 ? (
-                <p className="text-gray-500">No past orders.</p>
-              ) : (
-                <ul className="divide-y">
-                  {orderHistory.map((order) => {
-                    const product = order.inventory?.products
-                    const store = product?.stores
-                    const amount = product ? product.original_price - (product.current_discount || 0) : 0
-                    return (
-                      <li key={order.id} className="py-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold">{product?.name || 'Item'}</p>
-                            <p className="text-sm text-gray-500">{store?.name || 'Store'}</p>
-                            <p className="text-sm">Status: <span className="font-medium">{order.status}</span></p>
-                            {order.payment_status && (
-                              <p className="text-sm">Payment: <span className="font-medium">{order.payment_status}</span></p>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-green-600">रू {amount.toFixed(2)}</p>
-                            <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
+  <div>
+    <h1 className="text-2xl font-bold text-green-700 mb-4">Order History</h1>
+    <div className="bg-white rounded-xl shadow p-4">
+      {orderHistory.length === 0 ? (
+        <p className="text-gray-500">No past orders.</p>
+      ) : (
+        <ul className="divide-y">
+          {orderHistory.map((order) => {
+            const product = order.inventory?.products
+            const store = product?.stores
+            const amount = product ? product.original_price - (product.current_discount || 0) : 0
+            return (
+              <li key={order.id} className="py-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold">{product?.name || 'Item'}</p>
+                    <p className="text-sm text-gray-500">{store?.name || 'Store'}</p>
+                    <p className="text-sm">Status: <span className="font-medium">{order.status}</span></p>
+                    {order.payment_status && (
+                      <p className="text-sm">Payment: <span className="font-medium">{order.payment_status}</span></p>
+                    )}
+                    {order.vendor_note && (
+                      <p className="text-sm text-blue-600 mt-1">📝 Vendor note: {order.vendor_note}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-green-600">रू {amount.toFixed(2)}</p>
+                    <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  </div>
+)}
       </main>
 
       {/* Rating Modal */}

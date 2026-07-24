@@ -217,10 +217,24 @@ export const VendorDashboard = () => {
     const note = noteInputs[reservationId]?.trim()
     if (!note) { toast.warning('Please write a note.'); return }
     try {
+      // 1. Update reservation vendor_note
+      const { error: updateError } = await supabase
+        .from('reservations')
+        .update({ vendor_note: note })
+        .eq('id', reservationId)
+      if (updateError) throw updateError
+  
+      // 2. Insert notification
       const { error } = await supabase
         .from('notifications')
-        .insert({ user_id: userId, title: '📢 Store message', body: note, data: { reservation_id: reservationId } })
+        .insert({
+          user_id: userId,
+          title: '📢 Store message',
+          body: note,
+          data: { reservation_id: reservationId },
+        })
       if (error) throw error
+  
       toast.success('Note sent!')
       setNoteInputs(prev => ({ ...prev, [reservationId]: '' }))
     } catch (err: any) {
