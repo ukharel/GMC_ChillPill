@@ -11,7 +11,7 @@ import { SignupPage } from '@/pages/SignupPage'
 import { DealsPage } from '../src/pages/DealsPage'
 import { ReservationPage } from '@/pages/ReservationPage'
 import { UserDashboard } from '@/pages/user/UserDashboard'
-import { NotificationsPage } from '@/components/NotificationBell'
+import { NotificationsPage } from '@/pages/NotificationPage'
 
 // ---------- Vendor Pages ----------
 import { VendorDashboard } from '@/pages/vendor/VendorDashboard'
@@ -21,7 +21,7 @@ import { PaymentSuccess } from '@/pages/PaymentSuccess'
 import { PaymentFailure } from '@/pages/PaymentFailure'
 
 // ---------- Admin Pages ----------
-import { AdminDashboard } from '@/pages/AdminDashboard'
+// import { AdminDashboard } from '@/pages/AdminDashboard'
 
 // ---------- Role Guard Component ----------
 const RoleGuard = ({ allowedRoles }: { allowedRoles: ('user' | 'vendor' | 'admin')[] }) => {
@@ -71,10 +71,6 @@ function App() {
             <Route path="/vendor/withdraw" element={<Withdraw />} />
           </Route>
 
-          {/* ---------- Admin Routes ---------- */}
-          <Route element={<RoleGuard allowedRoles={['admin']} />}>
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          </Route>
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-failure" element={<PaymentFailure />} />
 
