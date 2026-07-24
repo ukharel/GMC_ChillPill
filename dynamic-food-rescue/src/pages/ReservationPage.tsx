@@ -86,7 +86,19 @@ export const ReservationPage = () => {
 
     fetchProduct()
   }, [inventoryId, navigate])
+  const [paymentOption, setPaymentOption] = useState<string | null>(null)
 
+  const handleEsewaPayment = () => {
+    // Redirect to eSewa (we'll build this later)
+    setPaymentOption('esewa')
+    // Construct eSewa form and submit
+  }
+  
+  const handleCashPayment = () => {
+    setPaymentOption('cash')
+    toast.info('Please pay in cash when you pick up the item.')
+    // Optionally update payment_status to 'pending' (already default)
+  }
   // Handle reservation
   const handleReserve = async () => {
     if (!user) {
@@ -248,6 +260,29 @@ export const ReservationPage = () => {
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
           ⚠️ Reserve now – you have 60 minutes to pick up.
         </div>
+        {/* Payment Options */}
+<div className="mt-6 border-t pt-4">
+  <h3 className="font-semibold text-lg">Payment Options</h3>
+  <div className="flex flex-col gap-2 mt-2">
+    {/* Pay with eSewa */}
+    <button
+      onClick={handleEsewaPayment}
+      className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+    >
+      Pay with eSewa
+    </button>
+    {/* Pay at Store */}
+    <button
+      onClick={handleCashPayment}
+      className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+    >
+      Pay at Store (Cash)
+    </button>
+  </div>
+  <p className="text-xs text-gray-500 mt-2">
+    {paymentOption === 'cash' ? 'You will pay when you pick up.' : 'You will be redirected to eSewa to complete payment.'}
+  </p>
+</div>
 
         <button
           onClick={handleReserve}
