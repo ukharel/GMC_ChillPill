@@ -185,7 +185,7 @@ export const ReservationPage = () => {
         .from('reservations')
         .update({
           delivery_address: requestDelivery ? deliveryAddress : null,
-          delivery_fee: requestDelivery ? 200 : 0,
+          delivery_fee: requestDelivery ? 50 : 0,
           delivery_status: requestDelivery ? 'pending' : 'not_requested',
         })
         .eq('id', reservation.id)
@@ -194,7 +194,7 @@ export const ReservationPage = () => {
       setReservation({
         ...reservation,
         delivery_address: deliveryAddress,
-        delivery_fee: requestDelivery ? 200 : 0,
+        delivery_fee: requestDelivery ? 50 : 0,
         delivery_status: requestDelivery ? 'pending' : 'not_requested',
       })
     } catch (err: any) {
@@ -349,7 +349,7 @@ export const ReservationPage = () => {
           {timeLeft !== 'Expired' && (
             <div className="mt-4 border-t pt-4">
               <h3 className="font-semibold text-lg">🚚 Delivery Option</h3>
-              <p className="text-sm text-gray-600">Have it delivered to your doorstep (₹200 extra).</p>
+              <p className="text-sm text-gray-600">Have it delivered to your doorstep (₹50 extra).</p>
               <label className="flex items-center gap-2 text-sm mt-2">
                 <input
                   type="checkbox"

@@ -245,20 +245,23 @@ const [submitting, setSubmitting] = useState(false)
       }
 
       const { data: resData, error: resErr } = await supabase
-        .from('reservations')
-        .select(`
-          id,
-          pickup_code,
-          status,
-          payment_status,
-          paid_at,
-          created_at,
-          user_id,
-          inventory (products (name, original_price, current_discount)),
-          profiles!user_id (full_name)
-        `)
-        .in('inventory_id', inventoryIds)
-        .order('created_at', { ascending: false })
+  .from('reservations')
+  .select(`
+    id,
+    pickup_code,
+    status,
+    payment_status,
+    paid_at,
+    created_at,
+    user_id,
+    delivery_address,
+    delivery_fee,
+    delivery_status,
+    inventory (products (name, original_price, current_discount)),
+    profiles!user_id (full_name)
+  `)
+  .in('inventory_id', inventoryIds)
+  .order('created_at', { ascending: false })
       if (resErr) throw resErr
 
       setReservations(resData || [])
@@ -631,6 +634,24 @@ if (!storeId) {
                                   <DollarSign className="w-4 h-4 inline mr-1" /> Mark Paid
                                 </button>
                               )}
+                              <td className="px-4 py-2">
+  {r.delivery_status === 'not_requested' ? (
+    <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+      Pickup
+    </span>
+  ) : (
+    <div>
+      <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+        Delivery
+      </span>
+      <div className="text-xs text-gray-500 mt-1">
+        <p>📍 {r.delivery_address || 'N/A'}</p>
+        <p>Fee: ₹{r.delivery_fee || 0}</p>
+        <p>Status: {r.delivery_status}</p>
+      </div>
+    </div>
+  )}
+</td>
                               <div className="flex items-center gap-1">
                                 <input
                                   type="text"
@@ -664,6 +685,7 @@ if (!storeId) {
                 <p className="p-4 text-gray-500">No paid transactions yet.</p>
               ) : (
                 <table className="w-full text-sm">
+                  
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">Item</th>
