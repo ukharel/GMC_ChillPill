@@ -206,7 +206,11 @@ export const ReservationPage = () => {
 
   // ---------- Countdown ----------
   useEffect(() => {
-    if (!reservation?.expires_at) return
+    if (!reservation?.expires_at) {
+      setTimeLeft('Loading...')
+      return
+    }
+  
     const interval = setInterval(() => {
       const diff = new Date(reservation.expires_at).getTime() - Date.now()
       if (diff <= 0) {
@@ -218,9 +222,9 @@ export const ReservationPage = () => {
       const secs = Math.floor((diff % 60000) / 1000)
       setTimeLeft(`${mins}m ${secs}s`)
     }, 1000)
+  
     return () => clearInterval(interval)
   }, [reservation?.expires_at])
-
   // ---------- eSewa Payment ----------
   const initiateEsewaPayment = () => {
     if (!product || !reservation) {

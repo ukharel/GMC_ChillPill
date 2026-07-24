@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Toaster } from 'sonner'
 import { LoadingPage } from '@/pages/LoadingPage'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useLocation } from 'react-router-dom'
 
 // Public Pages
 import { LoginPage } from '@/pages/LoginPage'
@@ -18,38 +20,33 @@ import { VendorDashboard } from '@/pages/vendor/VendorDashboard'
 import { ProductManagement } from '@/pages/vendor/ProductManagement'
 import { Withdraw } from '@/pages/vendor/Withdraw'
 
-// Admin Pages
+import { PageTransition } from './components/PageTransition'
 
-// ---------- Role Guard ----------
 const RoleGuard = ({ allowedRoles }: { allowedRoles: ('user' | 'vendor' | 'admin')[] }) => {
-  const { user, role, isLoading } = useAuth() // <-- use role
-
+  const { user, role, isLoading } = useAuth()
   if (isLoading) return <LoadingPage />
   if (!user) return <Navigate to="/login" replace />
-
   const effectiveRole = role || 'user'
-
   if (!allowedRoles.includes(effectiveRole)) {
-    const redirectMap: Record<string, string> = {
+    const redirectMap = {
       user: '/dashboard',
       vendor: '/vendor/dashboard',
       admin: '/admin/dashboard',
     }
     return <Navigate to={redirectMap[effectiveRole] || '/deals'} replace />
   }
-
   return <Outlet />
 }
 
-// ---------- App Root ----------
 function App() {
+  const location = useLocation() // now safe to use, because BrowserRouter is in main.tsx
+
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
+    <AuthProvider>
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
-
           <Route element={<RoleGuard allowedRoles={['user']} />}>
             <Route path="/" element={<DealsPage />} />
             <Route path="/deals" element={<DealsPage />} />
@@ -57,21 +54,15 @@ function App() {
             <Route path="/dashboard" element={<UserDashboard />} />
             <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
-
           <Route element={<RoleGuard allowedRoles={['vendor', 'admin']} />}>
             <Route path="/vendor/dashboard" element={<VendorDashboard />} />
             <Route path="/vendor/products" element={<ProductManagement />} />
-            <Route path="/vendor/withdraw" element={<Withdraw />} />
           </Route>
-
-          <Route element={<RoleGuard allowedRoles={['admin']} />}>
-          </Route>
-
           <Route path="*" element={<Navigate to="/deals" replace />} />
         </Routes>
-        <Toaster position="top-right" richColors />
-      </AuthProvider>
-    </BrowserRouter>
+      </AnimatePresence>
+      <Toaster position="top-right" richColors />
+    </AuthProvider>
   )
 }
 

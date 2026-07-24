@@ -5,7 +5,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import { LoadingPage } from '@/pages/LoadingPage'
-
+import { motion } from 'framer-motion'
+import { MotionWrapper } from '@/components/MotionWrapper'
 interface Deal {
   product_id: string
   product_name: string
@@ -44,8 +45,15 @@ const DealCard = ({
             <p className="text-sm text-gray-500">{store_name}</p>
           </div>
           {discountPercent > 0 && (
+            
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              <motion.span
+  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
+  animate={{ scale: [1, 1.05, 1] }}
+  transition={{ duration: 1.5, repeat: Infinity }}
+>
               {discountPercent}% OFF
+              </motion.span>
             </span>
           )}
         </div>
@@ -150,28 +158,32 @@ export const DealsPage = () => {
 
   // ---------- Initial load + Realtime subscription ----------
   useEffect(() => {
-    // Load deals initially
     fetchDeals()
-
-    // Subscribe to inventory changes (Realtime)
+  
     const channel = supabase
       .channel('deals-changes')
+      // Listen to product updates (name, price, discount, sell_by)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        () => {
+          console.log('🔄 Product changed – refreshing deals')
+          fetchDeals()
+        }
+      )
+      // Listen to inventory updates (quantity, reserved)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'inventory' },
         () => {
-          console.log('🔄 Inventory updated via Realtime – refreshing deals')
+          console.log('🔄 Inventory changed – refreshing deals')
           fetchDeals()
         }
       )
       .subscribe((status) => {
-        console.log('📡 Realtime subscription status:', status)
-        setSubscriptionStatus(status)
-        if (status !== 'SUBSCRIBED') {
-          console.warn('⚠️ Realtime not connected – consider enabling Realtime for inventory table')
-        }
+        console.log('📡 Subscription status:', status)
       })
-
+  
     return () => {
       supabase.removeChannel(channel)
     }
@@ -187,6 +199,7 @@ export const DealsPage = () => {
   }
 
   return (
+    <MotionWrapper className="min-h-screen bg-gray-50 p-4 pb-20">
     <div className="min-h-screen bg-gray-50 p-4 pb-20">
       <header className="flex justify-between items-center mb-6">
         <div>
@@ -227,7 +240,14 @@ export const DealsPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {deals.map((deal) => (
+          {deals.map((deal,index) => (
+            <motion.div
+            key={deal.inventory_id}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, delay: index * 0.05 }}
+            whileHover={{ scale: 1.02, boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}
+          >
             <DealCard
               key={deal.inventory_id}
               product_name={deal.product_name}
@@ -240,10 +260,13 @@ export const DealsPage = () => {
               available={deal.available}
               distance_km={deal.distance_km}
             />
+            </motion.div>
           ))}
+          
         </div>
         
       )}
     </div>
+    </MotionWrapper>
   )
 }

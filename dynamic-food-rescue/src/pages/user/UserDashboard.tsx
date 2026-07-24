@@ -24,6 +24,8 @@ import {
   X,
   History,
 } from 'lucide-react'
+import { MotionWrapper } from '@/components/MotionWrapper'
+import { motion } from "motion/react"
 
 // ---------- Types ----------
 interface StoreWithRating {
@@ -670,6 +672,7 @@ export const UserDashboard = () => {
 
   // ---------- Sidebar navigation ----------
   const navItems = [
+
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'flash_alerts', label: 'Flash Alerts', icon: <Clock className="w-5 h-5" /> },
     { id: 'smart_picks', label: 'Smart Picks', icon: <Zap className="w-5 h-5" /> },
@@ -685,7 +688,7 @@ export const UserDashboard = () => {
 
   if (loading || loadingImpact) return <LoadingPage />
 
-  return (
+  return ( <MotionWrapper className="flex h-screen bg-gray-100 overflow-hidden">
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white shadow-lg transition-all duration-300 flex flex-col`}>
@@ -703,9 +706,18 @@ export const UserDashboard = () => {
         className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
           activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
         }`}
-      >
+      ><motion.button
+  key={item.id}
+  whileHover={{ scale: 1.02, x: 4 }}
+  whileTap={{ scale: 0.98 }}
+  onClick={() => setActiveTab(item.id as any)}
+  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+    activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
+  }`}
+>
         {item.icon}
         <span className={sidebarOpen ? 'block' : 'hidden'}>{item.label}</span>
+        </motion.button>
       </button>
     ))}
   </nav>
@@ -1024,7 +1036,9 @@ export const UserDashboard = () => {
             </div>
           </div>
         </div>
+        
       )}
     </div>
+    </MotionWrapper>
   )
 }
