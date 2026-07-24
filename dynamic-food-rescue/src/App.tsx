@@ -1,121 +1,89 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate,Outlet } from 'react-router-dom'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { Toaster } from 'sonner'
+import { LoadingPage } from '@/pages/LoadingPage'
 
+// ---------- Public Pages ----------
+import { LoginPage } from '@/pages/LoginPage'
+import { SignupPage } from '@/pages/SignupPage'
+
+// ---------- User Pages ----------
+import { DealsPage } from '@/pages/DealsPage'
+import { ReservationPage } from '@/pages/ReservationPage'
+import { UserDashboard } from '@/pages/user/UserDashboard'
+import { NotificationsPage } from '@/pages/NotificationsPage'
+
+// ---------- Vendor Pages ----------
+import { VendorDashboard } from '@/pages/vendor/VendorDashboard'
+import { ProductManagement } from '@/pages/vendor/ProductManagement'
+import { Withdraw } from '@/pages/vendor/Withdraw'
+import { PaymentSuccess } from '@/pages/PaymentSuccess'
+import { PaymentFailure } from '@/pages/PaymentFailure'
+
+// ---------- Admin Pages ----------
+import { AdminDashboard } from '@/pages/AdminDashboard'
+
+// ---------- Role Guard Component ----------
+const RoleGuard = ({ allowedRoles }: { allowedRoles: ('user' | 'vendor' | 'admin')[] }) => {
+  const { user, profile, isLoading } = useAuth()
+
+  // ... inside RoleGuard
+if (isLoading) return <LoadingPage />
+if (!user) return <Navigate to="/login" replace />
+if (!profile) {
+  // Profile not loaded yet – redirect to default
+  return <Navigate to="/deals" replace />
+}
+if (!allowedRoles.includes(profile.role)) {
+  const redirectMap: Record<string, string> = {
+    user: '/deals',
+    vendor: '/vendor/dashboard',
+    admin: '/admin/dashboard',
+  }
+  return <Navigate to={redirectMap[profile.role] || '/deals'} replace />
+}
+return <Outlet />
+}
+
+// ---------- App Root ----------
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* ---------- Public Routes ---------- */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
 
-      <div className="ticks"></div>
+          {/* ---------- User Routes ---------- */}
+          <Route element={<RoleGuard allowedRoles={['user']} />}>
+            <Route path="/" element={<DealsPage />} />
+            <Route path="/deals" element={<DealsPage />} />
+            <Route path="/reserve/:inventoryId" element={<ReservationPage />} />
+            <Route path="/dashboard" element={<UserDashboard />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+          </Route>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          {/* ---------- Vendor Routes ---------- */}
+          <Route element={<RoleGuard allowedRoles={['vendor', 'admin']} />}>
+            <Route path="/vendor/dashboard" element={<VendorDashboard />} />
+            <Route path="/vendor/products" element={<ProductManagement />} />
+            <Route path="/vendor/withdraw" element={<Withdraw />} />
+          </Route>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+          {/* ---------- Admin Routes ---------- */}
+          <Route element={<RoleGuard allowedRoles={['admin']} />}>
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          </Route>
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failure" element={<PaymentFailure />} />
+
+          {/* ---------- Fallback ---------- */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        <Toaster position="top-right" richColors />
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 
