@@ -129,6 +129,97 @@ export const ReservationPage = () => {
         return
       }
 
+      const initiateEsewaPayment = async () => {
+  // Get amount from product
+  const amount = product.discounted_price
+  const productName = product.name
+  const merchantCode = import.meta.env.VITE_ESEWA_MERCHANT_CODE || 'EPAYTEST'
+  const secretKey = import.meta.env.VITE_ESEWA_SECRET_KEY || 'secretkey'
+  const paymentUrl = import.meta.env.VITE_ESEWA_PAYMENT_URL || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
+
+  // Generate unique transaction ID (pid)
+  const pid = `DR_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+  const amountFormatted = amount.toFixed(2)
+  const successUrl = import.meta.env.VITE_ESEWA_SUCCESS_URL || window.location.origin + '/payment-success'
+  const failureUrl = import.meta.env.VITE_ESEWA_FAILURE_URL || window.location.origin + '/payment-failure'
+
+  // Build eSewa form
+  const initiateEsewaPayment = async () => {
+    // Get amount from product
+    const amount = product.discounted_price
+    const productName = product.name
+    const merchantCode = import.meta.env.VITE_ESEWA_MERCHANT_CODE || 'EPAYTEST'
+    const secretKey = import.meta.env.VITE_ESEWA_SECRET_KEY || 'secretkey'
+    const paymentUrl = import.meta.env.VITE_ESEWA_PAYMENT_URL || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
+  
+    // Generate unique transaction ID (pid)
+    const pid = `DR_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const amountFormatted = amount.toFixed(2)
+    const successUrl = import.meta.env.VITE_ESEWA_SUCCESS_URL || window.location.origin + '/payment-success'
+    const failureUrl = import.meta.env.VITE_ESEWA_FAILURE_URL || window.location.origin + '/payment-failure'
+  
+    // Build eSewa form
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = paymentUrl
+    form.target = '_blank'
+  
+    const fields = {
+      amt: amountFormatted,
+      psc: '0',
+      pdc: '0',
+      txAmt: '0',
+      tAmt: amountFormatted,
+      pid: pid,
+      scd: merchantCode,
+      su: successUrl,
+      fu: failureUrl,
+    }
+  
+    // Add hidden inputs
+    Object.entries(fields).forEach(([key, value]) => {
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = key
+      input.value = String(value)
+      form.appendChild(input)
+    })
+  
+    document.body.appendChild(form)
+    form.submit()
+    document.body.removeChild(form)
+  }
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = paymentUrl
+  form.target = '_blank'
+
+  const fields = {
+    amt: amountFormatted,
+    psc: '0',
+    pdc: '0',
+    txAmt: '0',
+    tAmt: amountFormatted,
+    pid: pid,
+    scd: merchantCode,
+    su: successUrl,
+    fu: failureUrl,
+  }
+
+  // Add hidden inputs
+  Object.entries(fields).forEach(([key, value]) => {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = key
+    input.value = String(value)
+    form.appendChild(input)
+  })
+
+  document.body.appendChild(form)
+  form.submit()
+  document.body.removeChild(form)
+}
+
       // Fetch the full reservation with nested product/store
       const { data: reservationData, error: reservationError } = await supabase
         .from('reservations')
@@ -260,7 +351,7 @@ export const ReservationPage = () => {
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
           ⚠️ Reserve now – you have 60 minutes to pick up.
         </div>
-        {/* Payment Options */}
+          {/* Payment Options */}
 <div className="mt-6 border-t pt-4">
   <h3 className="font-semibold text-lg">Payment Options</h3>
   <div className="flex flex-col gap-2 mt-2">
@@ -283,7 +374,6 @@ export const ReservationPage = () => {
     {paymentOption === 'cash' ? 'You will pay when you pick up.' : 'You will be redirected to eSewa to complete payment.'}
   </p>
 </div>
-
         <button
           onClick={handleReserve}
           disabled={reserving || product.available < 1}

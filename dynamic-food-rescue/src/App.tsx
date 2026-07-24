@@ -8,10 +8,10 @@ import { LoginPage } from '@/pages/LoginPage'
 import { SignupPage } from '@/pages/SignupPage'
 
 // ---------- User Pages ----------
-import { DealsPage } from '@/pages/DealsPage'
+import { DealsPage } from '../src/pages/DealsPage'
 import { ReservationPage } from '@/pages/ReservationPage'
 import { UserDashboard } from '@/pages/user/UserDashboard'
-import { NotificationsPage } from '@/pages/NotificationsPage'
+import { NotificationsPage } from '@/components/NotificationBell'
 
 // ---------- Vendor Pages ----------
 import { VendorDashboard } from '@/pages/vendor/VendorDashboard'
