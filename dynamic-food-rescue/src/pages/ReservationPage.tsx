@@ -17,9 +17,9 @@ export const ReservationPage = () => {
   const [product, setProduct] = useState<any>(null)
   const [timeLeft, setTimeLeft] = useState('')
 
-  // Fetch product details
+  // ---------- Fetch product & check for existing reservation ----------
   useEffect(() => {
-    const fetchProduct = async () => {
+    const fetchData = async () => {
       if (!inventoryId) {
         toast.error('Invalid item')
         navigate('/deals')
@@ -27,7 +27,37 @@ export const ReservationPage = () => {
       }
 
       try {
-        const { data, error } = await supabase
+        // 1. Check if user already has an active reservation for this inventory
+        let existingReservation = null
+        if (user) {
+          const { data: existing, error: existErr } = await supabase
+            .from('reservations')
+            .select(`
+              id,
+              pickup_code,
+              reserved_at,
+              expires_at,
+              status,
+              payment_status,
+              inventory (
+                products (
+                  name,
+                  stores ( name, address )
+                )
+              )
+            `)
+            .eq('user_id', user.id)
+            .eq('inventory_id', inventoryId)
+            .eq('status', 'active')
+            .maybeSingle()
+
+          if (!existErr && existing) {
+            existingReservation = existing
+          }
+        }
+
+        // 2. Fetch product details (always needed)
+        const { data: invData, error: invError } = await supabase
           .from('inventory')
           .select(`
             id,
@@ -39,27 +69,22 @@ export const ReservationPage = () => {
               original_price,
               current_discount,
               sell_by,
-              stores (
-                name,
-                address
-              )
+              stores ( name, address )
             )
           `)
           .eq('id', inventoryId)
           .single()
 
-        if (error) throw error
-        if (!data) {
+        if (invError) throw invError
+        if (!invData) {
           toast.error('Item not found')
           navigate('/deals')
           return
         }
 
-        // Safe extraction with fallbacks
-        const prod = data.products as any
+        const prod = invData.products as any
         const store = prod?.stores as any
-
-        const available = (data.quantity || 0) - (data.reserved || 0)
+        const available = (invData.quantity || 0) - (invData.reserved || 0)
         const originalPrice = prod?.original_price || 0
         const discount = prod?.current_discount || 0
         const discountedPrice = Math.max(originalPrice - discount, 0)
@@ -75,31 +100,25 @@ export const ReservationPage = () => {
           sell_by: prod?.sell_by || new Date().toISOString(),
           available: available,
         })
+
+        // 3. If there is an existing reservation, set it
+        if (existingReservation) {
+          setReservation(existingReservation)
+          toast.info('You already have a reservation for this item.')
+        }
       } catch (err: any) {
-        console.error('Error fetching product:', err)
-        toast.error(err.message || 'Failed to load product')
+        console.error('Error fetching data:', err)
+        toast.error(err.message || 'Failed to load')
         navigate('/deals')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchProduct()
-  }, [inventoryId, navigate])
-  const [paymentOption, setPaymentOption] = useState<string | null>(null)
+    fetchData()
+  }, [inventoryId, user, navigate])
 
-  const handleEsewaPayment = () => {
-    // Redirect to eSewa (we'll build this later)
-    setPaymentOption('esewa')
-    // Construct eSewa form and submit
-  }
-  
-  const handleCashPayment = () => {
-    setPaymentOption('cash')
-    toast.info('Please pay in cash when you pick up the item.')
-    // Optionally update payment_status to 'pending' (already default)
-  }
-  // Handle reservation
+  // ---------- Handle new reservation ----------
   const handleReserve = async () => {
     if (!user) {
       toast.error('Please login')
@@ -129,98 +148,7 @@ export const ReservationPage = () => {
         return
       }
 
-      const initiateEsewaPayment = async () => {
-  // Get amount from product
-  const amount = product.discounted_price
-  const productName = product.name
-  const merchantCode = import.meta.env.VITE_ESEWA_MERCHANT_CODE || 'EPAYTEST'
-  const secretKey = import.meta.env.VITE_ESEWA_SECRET_KEY || 'secretkey'
-  const paymentUrl = import.meta.env.VITE_ESEWA_PAYMENT_URL || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
-
-  // Generate unique transaction ID (pid)
-  const pid = `DR_${Date.now()}_${Math.floor(Math.random() * 1000)}`
-  const amountFormatted = amount.toFixed(2)
-  const successUrl = import.meta.env.VITE_ESEWA_SUCCESS_URL || window.location.origin + '/payment-success'
-  const failureUrl = import.meta.env.VITE_ESEWA_FAILURE_URL || window.location.origin + '/payment-failure'
-
-  // Build eSewa form
-  const initiateEsewaPayment = async () => {
-    // Get amount from product
-    const amount = product.discounted_price
-    const productName = product.name
-    const merchantCode = import.meta.env.VITE_ESEWA_MERCHANT_CODE || 'EPAYTEST'
-    const secretKey = import.meta.env.VITE_ESEWA_SECRET_KEY || 'secretkey'
-    const paymentUrl = import.meta.env.VITE_ESEWA_PAYMENT_URL || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
-  
-    // Generate unique transaction ID (pid)
-    const pid = `DR_${Date.now()}_${Math.floor(Math.random() * 1000)}`
-    const amountFormatted = amount.toFixed(2)
-    const successUrl = import.meta.env.VITE_ESEWA_SUCCESS_URL || window.location.origin + '/payment-success'
-    const failureUrl = import.meta.env.VITE_ESEWA_FAILURE_URL || window.location.origin + '/payment-failure'
-  
-    // Build eSewa form
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = paymentUrl
-    form.target = '_blank'
-  
-    const fields = {
-      amt: amountFormatted,
-      psc: '0',
-      pdc: '0',
-      txAmt: '0',
-      tAmt: amountFormatted,
-      pid: pid,
-      scd: merchantCode,
-      su: successUrl,
-      fu: failureUrl,
-    }
-  
-    // Add hidden inputs
-    Object.entries(fields).forEach(([key, value]) => {
-      const input = document.createElement('input')
-      input.type = 'hidden'
-      input.name = key
-      input.value = String(value)
-      form.appendChild(input)
-    })
-  
-    document.body.appendChild(form)
-    form.submit()
-    document.body.removeChild(form)
-  }
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = paymentUrl
-  form.target = '_blank'
-
-  const fields = {
-    amt: amountFormatted,
-    psc: '0',
-    pdc: '0',
-    txAmt: '0',
-    tAmt: amountFormatted,
-    pid: pid,
-    scd: merchantCode,
-    su: successUrl,
-    fu: failureUrl,
-  }
-
-  // Add hidden inputs
-  Object.entries(fields).forEach(([key, value]) => {
-    const input = document.createElement('input')
-    input.type = 'hidden'
-    input.name = key
-    input.value = String(value)
-    form.appendChild(input)
-  })
-
-  document.body.appendChild(form)
-  form.submit()
-  document.body.removeChild(form)
-}
-
-      // Fetch the full reservation with nested product/store
+      // Fetch the full reservation
       const { data: reservationData, error: reservationError } = await supabase
         .from('reservations')
         .select(`
@@ -229,14 +157,11 @@ export const ReservationPage = () => {
           reserved_at,
           expires_at,
           status,
-          note,
+          payment_status,
           inventory (
             products (
               name,
-              stores (
-                name,
-                address
-              )
+              stores ( name, address )
             )
           )
         `)
@@ -247,6 +172,8 @@ export const ReservationPage = () => {
 
       setReservation(reservationData)
       toast.success('Reserved! Pick up within 1 hour.')
+      // Redirect to dashboard after a moment so user sees the success
+      setTimeout(() => navigate('/dashboard'), 1500)
     } catch (err: any) {
       console.error('Reservation error:', err)
       toast.error(err.message || 'Something went wrong')
@@ -255,7 +182,7 @@ export const ReservationPage = () => {
     }
   }
 
-  // Countdown timer
+  // ---------- Countdown timer ----------
   useEffect(() => {
     if (!reservation?.expires_at) return
 
@@ -274,10 +201,54 @@ export const ReservationPage = () => {
     return () => clearInterval(interval)
   }, [reservation?.expires_at])
 
-  // Loading
+  // ---------- eSewa payment (unchanged) ----------
+  const initiateEsewaPayment = () => {
+    if (!product || !reservation) {
+      toast.error('Missing reservation data')
+      return
+    }
+  
+    const amount = product.discounted_price
+    const merchantCode = import.meta.env.VITE_ESEWA_MERCHANT_CODE || 'EPAYTEST'
+    const paymentUrl = import.meta.env.VITE_ESEWA_PAYMENT_URL || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form'
+    const successUrl = import.meta.env.VITE_ESEWA_SUCCESS_URL || window.location.origin + '/payment-success'
+    const failureUrl = import.meta.env.VITE_ESEWA_FAILURE_URL || window.location.origin + '/payment-failure'
+  
+    const pid = `DR_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+  
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = paymentUrl
+    form.target = '_blank'
+  
+    const fields = {
+      amt: amount.toFixed(2),
+      psc: '0',
+      pdc: '0',
+      txAmt: '0',
+      tAmt: amount.toFixed(2),
+      pid: pid,
+      scd: merchantCode,
+      su: successUrl,
+      fu: failureUrl,
+    }
+  
+    Object.entries(fields).forEach(([key, value]) => {
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = key
+      input.value = String(value)
+      form.appendChild(input)
+    })
+  
+    document.body.appendChild(form)
+    form.submit()
+    document.body.removeChild(form)
+  }
+
+  // ---------- Loading ----------
   if (loading) return <LoadingPage />
 
-  // If product not found
   if (!product) {
     return (
       <div className="text-center py-10">
@@ -289,12 +260,11 @@ export const ReservationPage = () => {
     )
   }
 
-  // ----- Already reserved – show QR code -----
+  // ---------- Already reserved – show QR & payment ----------
   if (reservation) {
     const inv = reservation.inventory as any
     const prod = inv?.products as any
     const store = prod?.stores as any
-    
 
     return (
       <div className="min-h-screen bg-gray-50 p-4">
@@ -302,12 +272,6 @@ export const ReservationPage = () => {
           <div className="w-32 h-32 mx-auto bg-white p-2 border-2 border-gray-200 rounded-lg">
             <QRCode value={reservation.pickup_code} size={120} style={{ height: 'auto', maxWidth: '100%', width: '100%' }} />
           </div>
-          {reservation.note && (
-      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-        <p className="font-medium">📝 Store Note:</p>
-        <p>{reservation.note}</p>
-      </div>
-    )}
           <h2 className="text-xl font-bold mt-2">{prod?.name || 'Item'}</h2>
           <p className="text-gray-600">{store?.name || 'Store'}</p>
           <div className="mt-4 p-3 bg-green-50 rounded-lg">
@@ -320,15 +284,59 @@ export const ReservationPage = () => {
               {timeLeft}
             </p>
           </div>
-          <button onClick={() => navigate('/deals')} className="mt-6 w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition">
-            Browse More
+          {timeLeft === 'Expired' && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600 font-medium">Reservation expired!</p>
+              <button onClick={() => navigate('/deals')} className="mt-2 px-4 py-2 bg-red-600 text-white rounded">
+                Back to Deals
+              </button>
+            </div>
+          )}
+
+          {/* Payment Options */}
+          {reservation.payment_status !== 'paid' && timeLeft !== 'Expired' && (
+            <div className="mt-6 border-t pt-4">
+              <h3 className="font-semibold text-lg">Payment Options</h3>
+              <div className="flex flex-col gap-2 mt-2">
+                <button
+                  onClick={initiateEsewaPayment}
+                  className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                >
+                  💳 Pay with eSewa
+                </button>
+                <button
+                  onClick={() => toast.info('Please pay in cash when you pick up the item.')}
+                  className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                >
+                  💵 Pay at Store (Cash)
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {reservation.payment_status === 'pending'
+                  ? 'Payment not yet processed.'
+                  : 'Payment already completed.'}
+              </p>
+            </div>
+          )}
+
+          {reservation.payment_status === 'paid' && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-blue-700">✅ Payment completed</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="mt-6 w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+          >
+            Back to Dashboard
           </button>
         </div>
       </div>
     )
   }
 
-  // ----- Not reserved yet – show Reserve button -----
+  // ---------- Not reserved yet – show reserve button ----------
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6">
@@ -351,29 +359,7 @@ export const ReservationPage = () => {
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
           ⚠️ Reserve now – you have 60 minutes to pick up.
         </div>
-          {/* Payment Options */}
-<div className="mt-6 border-t pt-4">
-  <h3 className="font-semibold text-lg">Payment Options</h3>
-  <div className="flex flex-col gap-2 mt-2">
-    {/* Pay with eSewa */}
-    <button
-      onClick={handleEsewaPayment}
-      className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-    >
-      Pay with eSewa
-    </button>
-    {/* Pay at Store */}
-    <button
-      onClick={handleCashPayment}
-      className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-    >
-      Pay at Store (Cash)
-    </button>
-  </div>
-  <p className="text-xs text-gray-500 mt-2">
-    {paymentOption === 'cash' ? 'You will pay when you pick up.' : 'You will be redirected to eSewa to complete payment.'}
-  </p>
-</div>
+
         <button
           onClick={handleReserve}
           disabled={reserving || product.available < 1}
@@ -384,7 +370,10 @@ export const ReservationPage = () => {
           {reserving ? 'Reserving...' : product.available < 1 ? 'Sold Out' : 'Reserve Now'}
         </button>
 
-        <button onClick={() => navigate('/deals')} className="mt-3 w-full py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition">
+        <button
+          onClick={() => navigate('/deals')}
+          className="mt-3 w-full py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+        >
           Back to Deals
         </button>
       </div>

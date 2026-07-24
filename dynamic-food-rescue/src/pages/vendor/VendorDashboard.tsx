@@ -1,4 +1,3 @@
-// src/pages/vendor/VendorDashboard.tsx
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,7 +8,6 @@ import {
   ShoppingBag,
   History,
   Package,
-  DollarSign,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +15,12 @@ import {
   Send,
   TrendingUp,
   Star,
+  Heart,
+  Plus,
+  Edit,
+  Trash2,
+  X,
+  DollarSign,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -30,6 +34,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+
+// ---------- Stat Card ----------
 const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) => (
   <div className="bg-white p-4 rounded-xl shadow flex items-center">
     <div className="p-3 bg-green-100 rounded-full mr-3">{icon}</div>
@@ -40,21 +46,44 @@ const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string
   </div>
 )
 
+// ---------- Main Component ----------
 export const VendorDashboard = () => {
+  // Setup state
+// Inside the component, after existing state declarations
+const [showSetup, setShowSetup] = useState(false)
+const [storeName, setStoreName] = useState('')
+const [storeAddress, setStoreAddress] = useState('')
+const [submitting, setSubmitting] = useState(false)
+
   const { user, signOut } = useAuth()
   const [storeId, setStoreId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'reservations' | 'history' | 'products' | 'withdraw'>('overview')
+  // Sidebar state
+  const [activeTab, setActiveTab] = useState<'overview' | 'reservations' | 'history' | 'products' | 'donate'>('overview')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
+  // Data states
   const [stats, setStats] = useState({ revenue: 0, orders: 0, rating: 0, deliveries: 0 })
   const [reservations, setReservations] = useState<any[]>([])
   const [paidHistory, setPaidHistory] = useState<any[]>([])
   const [dailyData, setDailyData] = useState<any[]>([])
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({})
 
-  // Fetch store ID
+  // Donation states
+  const [donations, setDonations] = useState<any[]>([])
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingDonation, setEditingDonation] = useState<any | null>(null)
+  const [donationForm, setDonationForm] = useState({
+    product_name: '',
+    quantity: 0,
+    unit: 'kg',
+    expiry_date: '',
+    pickup_deadline: '',
+    notes: '',
+  })
+
+  // ---------- Fetch store ID ----------
   useEffect(() => {
     const fetchStore = async () => {
       if (!user) return
@@ -64,44 +93,110 @@ export const VendorDashboard = () => {
         .eq('user_id', user.id)
         .maybeSingle()
       if (error) {
-        toast.error('Failed to fetch store')
+        console.error('Error fetching store staff:', error)
+        // Don't show toast here; just let the setup form appear
+        setShowSetup(true)
+        setLoading(false)
         return
       }
-      if (data) setStoreId(data.store_id)
-      else toast.error('You are not registered as store staff')
+      if (data) {
+        setStoreId(data.store_id)
+        setShowSetup(false)
+      } else {
+        // No store staff → show setup form
+        setShowSetup(true)
+      }
       setLoading(false)
     }
     fetchStore()
   }, [user])
-
-  // ---------- Fetch Data ----------
-  const fetchData = async () => {
-    if (!storeId) {
-      console.warn('No storeId, skipping fetch')
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    if (!storeName.trim()) {
+      toast.error('Please enter a store name')
       return
     }
-
+  
+    setSubmitting(true)
     try {
-      console.log('🔄 Fetching data for store:', storeId)
+      // 1. Create store
+      const { data: newStore, error: storeError } = await supabase
+        .from('stores')
+        .insert({
+          name: storeName.trim(),
+          address: storeAddress.trim() || 'Kathmandu, Nepal',
+          latitude: 27.7172,
+          longitude: 85.3240,
+        })
+        .select()
+        .single()
+      if (storeError) throw storeError
+  
+      // 2. Create store_staff record
+      const { error: staffError } = await supabase
+        .from('store_staff')
+        .insert({
+          user_id: user.id,
+          store_id: newStore.id,
+          role: 'manager',
+        })
+      if (staffError) throw staffError
+  
+      toast.success('Store created!')
+      setShowSetup(false)
+      setStoreId(newStore.id)
+      // Refresh data (fetchAnalytics, etc.)
+      fetchData()
+    } catch (err: any) {
+      console.error('Setup error:', err)
+      toast.error(err.message || 'Failed to create store')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  // ---------- Fetch all data ----------
+  const fetchData = async () => {
+    if (!storeId) return
+    try {
+      await Promise.all([
+        fetchAnalytics(),
+        fetchReservations(),
+        fetchDonations(),
+      ])
+    } catch (err) {
+      console.error('Error fetching data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-      // 1. Today's metrics
+  // ---------- Analytics ----------
+  const fetchAnalytics = async () => {
+    if (!storeId) return
+    try {
       const today = new Date().toISOString().split('T')[0]
-      const { data: metrics } = await supabase
+      const { data: metrics, error: metricsError } = await supabase
         .from('daily_metrics')
         .select('*')
         .eq('store_id', storeId)
         .eq('date', today)
         .maybeSingle()
+      if (metricsError) throw metricsError
 
-      // 2. Average rating
-      const { data: ratings } = await supabase
+      const { data: ratings, error: ratingError } = await supabase
         .from('ratings')
         .select('rating')
         .eq('store_id', storeId)
-      const avgRating = ratings?.length ? ratings.reduce((a, b) => a + b.rating, 0) / ratings.length : 0
+      if (ratingError) throw ratingError
+      const avgRating = ratings?.length
+        ? ratings.reduce((a, b) => a + b.rating, 0) / ratings.length
+        : 0
 
-      // 3. Weekly chart
-      const { data: weeklyData } = await supabase.rpc('get_weekly_analytics', { store_id: storeId })
+      const { data: weeklyData, error: weeklyError } = await supabase
+        .rpc('get_weekly_analytics', { store_id: storeId })
+      if (weeklyError) throw weeklyError
+
       const chartData = (weeklyData || []).map((day: any) => ({
         name: day.day_name,
         revenue: day.revenue || 0,
@@ -115,85 +210,186 @@ export const VendorDashboard = () => {
         deliveries: metrics?.deliveries || 0,
       })
       setDailyData(chartData)
+    } catch (err) {
+      console.error('Analytics error:', err)
+      toast.error('Failed to load analytics')
+    }
+  }
 
-      // ---------- 4. Reservations (Step by Step) ----------
-      console.log('📦 Step 1: Fetching products...')
+  // ---------- Reservations ----------
+  const fetchReservations = async () => {
+    if (!storeId) return
+    try {
       const { data: products, error: prodErr } = await supabase
         .from('products')
         .select('id')
         .eq('store_id', storeId)
       if (prodErr) throw prodErr
       const productIds = products?.map(p => p.id) || []
-      console.log(`  → ${productIds.length} products found`)
-
-      let inventoryIds: string[] = []
-      if (productIds.length) {
-        console.log('📦 Step 2: Fetching inventory...')
-        const { data: inventories, error: invErr } = await supabase
-          .from('inventory')
-          .select('id')
-          .in('product_id', productIds)
-        if (invErr) throw invErr
-        inventoryIds = inventories?.map(i => i.id) || []
-        console.log(`  → ${inventoryIds.length} inventory records found`)
+      if (productIds.length === 0) {
+        setReservations([])
+        setPaidHistory([])
+        return
       }
 
-      let reservationsData: any[] = []
-      if (inventoryIds.length) {
-        console.log('📦 Step 3: Fetching reservations...')
-        // CORRECTED: only fetch full_name from profiles
-        const { data: reservations, error: resErr } = await supabase
-          .from('reservations')
-          .select(`
-            id,
-            pickup_code,
-            status,
-            payment_status,
-            paid_at,
-            created_at,
-            user_id,
-            inventory (products (name, original_price, current_discount)),
-            profiles!user_id (full_name)
-          `)
-          .in('inventory_id', inventoryIds)
-          .order('created_at', { ascending: false })
-        if (resErr) throw resErr
-        reservationsData = reservations || []
-        console.log(`  → ${reservationsData.length} reservations found`)
-      } else {
-        console.warn('⚠️ No inventory IDs, skipping reservation fetch')
+      const { data: inventories, error: invErr } = await supabase
+        .from('inventory')
+        .select('id')
+        .in('product_id', productIds)
+      if (invErr) throw invErr
+      const inventoryIds = inventories?.map(i => i.id) || []
+      if (inventoryIds.length === 0) {
+        setReservations([])
+        setPaidHistory([])
+        return
       }
 
-      setReservations(reservationsData)
-      setPaidHistory(reservationsData.filter(r => r.payment_status === 'paid'))
+      const { data: resData, error: resErr } = await supabase
+        .from('reservations')
+        .select(`
+          id,
+          pickup_code,
+          status,
+          payment_status,
+          paid_at,
+          created_at,
+          user_id,
+          inventory (products (name, original_price, current_discount)),
+          profiles!user_id (full_name)
+        `)
+        .in('inventory_id', inventoryIds)
+        .order('created_at', { ascending: false })
+      if (resErr) throw resErr
 
+      setReservations(resData || [])
+      setPaidHistory(resData?.filter(r => r.payment_status === 'paid') || [])
     } catch (err) {
-      console.error('❌ Error fetching data:', err)
-      toast.error('Failed to load data')
-    } finally {
-      setLoading(false)
+      console.error('Reservations error:', err)
+      toast.error('Failed to load reservations')
     }
   }
 
-  useEffect(() => {
-    if (storeId) {
-      fetchData()
-      const channel = supabase
-        .channel('vendor-dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, fetchData)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_metrics' }, fetchData)
-        .subscribe()
-      return () => { supabase.removeChannel(channel) }
+  // ---------- Donations CRUD ----------
+  const fetchDonations = async () => {
+    if (!storeId) return
+    try {
+      const { data, error } = await supabase
+        .from('donations')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setDonations(data || [])
+    } catch (err) {
+      console.error('Donations error:', err)
+      toast.error('Failed to load donations')
     }
-  }, [storeId])
+  }
 
-  // ---------- Actions ----------
+  const handleAddDonation = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!storeId) return
+    try {
+      const { error } = await supabase
+        .from('donations')
+        .insert({
+          store_id: storeId,
+          ...donationForm,
+          quantity: Number(donationForm.quantity),
+          status: 'active',
+        })
+      if (error) throw error
+      toast.success('Donation added!')
+      resetDonationForm()
+      fetchDonations()
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  const handleUpdateDonation = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingDonation) return
+    try {
+      const { error } = await supabase
+        .from('donations')
+        .update({
+          product_name: donationForm.product_name,
+          quantity: Number(donationForm.quantity),
+          unit: donationForm.unit,
+          expiry_date: donationForm.expiry_date,
+          pickup_deadline: donationForm.pickup_deadline,
+          notes: donationForm.notes,
+        })
+        .eq('id', editingDonation.id)
+      if (error) throw error
+      toast.success('Donation updated!')
+      resetDonationForm()
+      fetchDonations()
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  const deleteDonation = async (id: string) => {
+    if (!confirm('Delete this donation?')) return
+    try {
+      const { error } = await supabase.from('donations').delete().eq('id', id)
+      if (error) throw error
+      toast.success('Donation deleted')
+      fetchDonations()
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  const markPickedUp = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('donations')
+        .update({ status: 'picked_up' })
+        .eq('id', id)
+      if (error) throw error
+      toast.success('Donation marked as picked up!')
+      fetchDonations()
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
+
+  const resetDonationForm = () => {
+    setDonationForm({
+      product_name: '',
+      quantity: 0,
+      unit: 'kg',
+      expiry_date: '',
+      pickup_deadline: '',
+      notes: '',
+    })
+    setEditingDonation(null)
+    setIsFormOpen(false)
+  }
+
+  const openEdit = (donation: any) => {
+    setEditingDonation(donation)
+    setDonationForm({
+      product_name: donation.product_name,
+      quantity: donation.quantity,
+      unit: donation.unit,
+      expiry_date: donation.expiry_date?.slice(0, 16) || '',
+      pickup_deadline: donation.pickup_deadline?.slice(0, 16) || '',
+      notes: donation.notes || '',
+    })
+    setIsFormOpen(true)
+  }
+
+  // ---------- Actions: Update Status, Mark Paid, Send Note ----------
   const updateStatus = async (id: string, status: string) => {
     try {
       const { error } = await supabase.from('reservations').update({ status }).eq('id', id)
       if (error) throw error
       toast.success(`Status updated to ${status}`)
-      fetchData()
+      fetchReservations()
     } catch (err: any) {
       toast.error(err.message)
     }
@@ -206,8 +402,9 @@ export const VendorDashboard = () => {
         .update({ payment_status: 'paid', paid_at: new Date().toISOString() })
         .eq('id', id)
       if (error) throw error
-      toast.success('Marked as paid! Revenue added to analytics.')
-      fetchData()
+      toast.success('Marked as paid!')
+      fetchReservations()
+      fetchAnalytics() // refresh revenue
     } catch (err: any) {
       toast.error(err.message)
     }
@@ -217,14 +414,6 @@ export const VendorDashboard = () => {
     const note = noteInputs[reservationId]?.trim()
     if (!note) { toast.warning('Please write a note.'); return }
     try {
-      // 1. Update reservation vendor_note
-      const { error: updateError } = await supabase
-        .from('reservations')
-        .update({ vendor_note: note })
-        .eq('id', reservationId)
-      if (updateError) throw updateError
-  
-      // 2. Insert notification
       const { error } = await supabase
         .from('notifications')
         .insert({
@@ -234,7 +423,6 @@ export const VendorDashboard = () => {
           data: { reservation_id: reservationId },
         })
       if (error) throw error
-  
       toast.success('Note sent!')
       setNoteInputs(prev => ({ ...prev, [reservationId]: '' }))
     } catch (err: any) {
@@ -242,19 +430,91 @@ export const VendorDashboard = () => {
     }
   }
 
+  // ---------- Realtime subscriptions ----------
+  useEffect(() => {
+    if (!storeId) return
+    fetchData()
+
+    const channel = supabase
+      .channel('vendor-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        fetchReservations()
+        fetchAnalytics()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_metrics' }, fetchAnalytics)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, fetchDonations)
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [storeId])
+
   if (loading) return <LoadingPage />
+  if (loading) return <LoadingPage />
+
+if (showSetup) {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6">
+        <h2 className="text-2xl font-bold text-center text-green-700">Set Up Your Store</h2>
+        <p className="text-center text-gray-500 text-sm mt-1">Create your store to start selling.</p>
+        <form onSubmit={handleSetup} className="space-y-4 mt-4">
+          <div>
+            <label className="block text-sm font-medium">Store Name *</label>
+            <input
+              type="text"
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              placeholder="e.g. Fresh Mart"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Address</label>
+            <input
+              type="text"
+              value={storeAddress}
+              onChange={(e) => setStoreAddress(e.target.value)}
+              placeholder="e.g. New Road, Kathmandu"
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            {submitting ? 'Creating...' : 'Create Store & Continue'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+if (!storeId) {
+  return <div className="p-4 text-center">No store found. Please set up your store.</div>
+}
+
+  
+  // --- Existing: if no store (shouldn't happen if showSetup is false, but keep fallback) ---
+  if (!storeId) {
+    return <div className="p-4 text-center">No store found. Please set up your store.</div>
+  }
   if (!storeId) return <div className="p-4 text-center">No store found. Please set up your store.</div>
 
+  // Sidebar nav items
   const navItems = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'reservations', label: 'Reservations', icon: <ShoppingBag className="w-5 h-5" /> },
     { id: 'history', label: 'History', icon: <History className="w-5 h-5" /> },
     { id: 'products', label: 'Products', icon: <Package className="w-5 h-5" /> },
-    { id: 'withdraw', label: 'Withdraw', icon: <DollarSign className="w-5 h-5" /> },
+    { id: 'donate', label: 'Donate', icon: <Heart className="w-5 h-5" /> },
   ]
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
+      {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white shadow-lg transition-all duration-300 flex flex-col`}>
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className={`font-bold text-green-700 ${!sidebarOpen && 'hidden'}`}>Vendor Panel</h2>
@@ -284,7 +544,9 @@ export const VendorDashboard = () => {
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-6">
+        {/* Overview */}
         {activeTab === 'overview' && (
           <div>
             <h1 className="text-3xl font-bold text-green-700">Overview</h1>
@@ -321,6 +583,7 @@ export const VendorDashboard = () => {
           </div>
         )}
 
+        {/* Reservations */}
         {activeTab === 'reservations' && (
           <div>
             <h1 className="text-2xl font-bold text-green-700">Reservations</h1>
@@ -392,6 +655,7 @@ export const VendorDashboard = () => {
           </div>
         )}
 
+        {/* History */}
         {activeTab === 'history' && (
           <div>
             <h1 className="text-2xl font-bold text-green-700">Payment History</h1>
@@ -429,6 +693,7 @@ export const VendorDashboard = () => {
           </div>
         )}
 
+        {/* Products */}
         {activeTab === 'products' && (
           <div>
             <h1 className="text-2xl font-bold text-green-700">Products</h1>
@@ -438,14 +703,157 @@ export const VendorDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'withdraw' && (
+        {/* Donate */}
+        {activeTab === 'donate' && (
           <div>
-            <h1 className="text-2xl font-bold text-green-700">Withdraw</h1>
-            <p className="text-gray-500 mt-2">
-              <Link to="/vendor/withdraw" className="text-blue-600 hover:underline">
-                Withdraw to eSewa
-              </Link>
-            </p>
+            <h1 className="text-2xl font-bold text-green-700 flex items-center gap-2">
+              <Heart className="text-red-500" /> Donate Surplus Food
+            </h1>
+            <p className="text-gray-500 mb-4">List surplus food for donation to charities and NGOs.</p>
+
+            <button
+              onClick={() => setIsFormOpen(true)}
+              className="mb-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> New Donation
+            </button>
+
+            {donations.length === 0 ? (
+              <p className="text-gray-500">No donations yet. Click "New Donation" to start.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {donations.map((d) => (
+                  <div key={d.id} className="bg-white rounded-xl shadow p-4 border-t-4 border-green-500">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-semibold text-lg">{d.product_name}</h3>
+                        <p className="text-sm text-gray-500">{d.quantity} {d.unit}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        d.status === 'active' ? 'bg-green-100 text-green-800' :
+                        d.status === 'claimed' ? 'bg-yellow-100 text-yellow-800' :
+                        d.status === 'picked_up' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {d.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      <p>Expires: {new Date(d.expiry_date).toLocaleDateString()}</p>
+                      <p>Pickup by: {new Date(d.pickup_deadline).toLocaleDateString()}</p>
+                      {d.notes && <p className="text-gray-500 mt-1">📝 {d.notes}</p>}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {d.status === 'active' && (
+                        <button
+                          onClick={() => markPickedUp(d.id)}
+                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                        >
+                          Mark Picked Up
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openEdit(d)}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                      >
+                        <Edit className="w-4 h-4 inline mr-1" /> Edit
+                      </button>
+                      <button
+                        onClick={() => deleteDonation(d.id)}
+                        className="px-3 py-1 bg-red-100 text-red-700 text-sm rounded hover:bg-red-200"
+                      >
+                        <Trash2 className="w-4 h-4 inline mr-1" /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Donation Form Modal */}
+            {isFormOpen && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold">{editingDonation ? 'Edit' : 'Add'} Donation</h2>
+                    <button onClick={resetDonationForm} className="text-gray-500 hover:text-gray-700">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <form onSubmit={editingDonation ? handleUpdateDonation : handleAddDonation} className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium">Product Name</label>
+                      <input
+                        type="text"
+                        value={donationForm.product_name}
+                        onChange={(e) => setDonationForm({ ...donationForm, product_name: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">Quantity</label>
+                      <input
+                        type="number"
+                        value={donationForm.quantity}
+                        onChange={(e) => setDonationForm({ ...donationForm, quantity: Number(e.target.value) })}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">Unit</label>
+                      <select
+                        value={donationForm.unit}
+                        onChange={(e) => setDonationForm({ ...donationForm, unit: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="kg">kg</option>
+                        <option value="piece">piece</option>
+                        <option value="bunch">bunch</option>
+                        <option value="packet">packet</option>
+                        <option value="dozen">dozen</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">Expiry Date</label>
+                      <input
+                        type="datetime-local"
+                        value={donationForm.expiry_date}
+                        onChange={(e) => setDonationForm({ ...donationForm, expiry_date: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">Pickup Deadline</label>
+                      <input
+                        type="datetime-local"
+                        value={donationForm.pickup_deadline}
+                        onChange={(e) => setDonationForm({ ...donationForm, pickup_deadline: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium">Notes (optional)</label>
+                      <textarea
+                        value={donationForm.notes}
+                        onChange={(e) => setDonationForm({ ...donationForm, notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        rows={2}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      {editingDonation ? 'Update' : 'Add'} Donation
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

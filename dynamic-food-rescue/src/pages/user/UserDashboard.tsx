@@ -265,6 +265,7 @@ export const UserDashboard = () => {
         .from('reservations')
         .select(`
           id,
+          inventory_id,
           pickup_code,
           reserved_at,
           expires_at,
