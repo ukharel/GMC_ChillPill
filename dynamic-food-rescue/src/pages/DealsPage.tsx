@@ -100,7 +100,7 @@ export const DealsPage = () => {
       const { data: rpcData, error: rpcError } = await supabase.rpc('nearby_products', {
         lat,
         lng,
-        radius_km: 20,
+        radius_km: 50,
       })
 
       if (!rpcError && rpcData && rpcData.length > 0) {
@@ -205,6 +205,12 @@ export const DealsPage = () => {
           >
             Logout
           </button>
+          <button
+      onClick={fetchDeals}
+      className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+    >
+      🔄 Refresh
+    </button>
         </div>
       </header>
 
@@ -236,6 +242,7 @@ export const DealsPage = () => {
             />
           ))}
         </div>
+        
       )}
     </div>
   )
