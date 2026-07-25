@@ -2,7 +2,7 @@
 
 > **A real‑time, mobile‑first platform that reduces food waste by connecting grocery stores with consumers through dynamic discounts and free donations.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Vercel](https://img.shields.io/badge/deployed%20on-Vercel-black)](https://vercel.com)
+
 
 ---
 
