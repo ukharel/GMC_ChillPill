@@ -972,7 +972,7 @@ export const UserDashboard = () => {
       {/* Rating Modal */}
       {showRatingModal && selectedStore && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+          <div className="bg-white rounded-xl shadow-lg  w-full p-6">
             <h2 className="text-xl font-bold">Rate {selectedStore.name}</h2>
             <div className="mt-4 flex items-center gap-2">
               {[1, 2, 3, 4, 5].map((star) => (
