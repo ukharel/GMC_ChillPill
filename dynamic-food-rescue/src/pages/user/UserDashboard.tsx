@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { MotionWrapper } from '@/components/MotionWrapper'
 import { motion } from "motion/react"
+import { Gift } from 'lucide-react'
 
 // ---------- Types ----------
 interface StoreWithRating {
@@ -679,6 +680,7 @@ export const UserDashboard = () => {
     { id: 'rated_stores', label: 'Rated Stores', icon: <ThumbsUp className="w-5 h-5" /> },
     { id: 'nearby_stores', label: 'Nearby Stores', icon: <MapPin className="w-5 h-5" /> },
     { id: 'history', label: 'History', icon: <History className="w-5 h-5" /> },
+
   ]
 
   const filteredStores = stores.filter(s =>

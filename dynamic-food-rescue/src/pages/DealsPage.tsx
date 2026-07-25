@@ -199,6 +199,7 @@ export const DealsPage = () => {
   }
 
   return (
+    
     <MotionWrapper className="min-h-screen bg-gray-50 p-4 pb-20">
     <div className="min-h-screen bg-gray-50 p-4 pb-20">
       <header className="flex justify-between items-center mb-6">
@@ -207,6 +208,12 @@ export const DealsPage = () => {
           <p className="text-sm text-gray-500">Fresh deals near you</p>
         </div>
         <div className="flex items-center space-x-3">
+        <Link
+  to="/free-food"
+  className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition"
+>
+  🎁 Free Food
+</Link>
           {subscriptionStatus !== 'SUBSCRIBED' && (
             <span className="text-xs text-yellow-600 bg-yellow-100 px-2 py-1 rounded">
               ⚠️ Updates delayed

@@ -13,9 +13,13 @@ interface Donation {
   unit: string
   expiry_date: string
   pickup_deadline: string
-  notes: string
+  notes: string | null
   status: string
-  stores: { name: string; address: string }
+  store_id: string
+  stores: {
+    name: string
+    address: string
+  } | null
 }
 
 export const FreeFoodPage = () => {
@@ -24,41 +28,56 @@ export const FreeFoodPage = () => {
   const [loading, setLoading] = useState(true)
   const [claiming, setClaiming] = useState<string | null>(null)
 
-  // Fetch active donations
   const fetchDonations = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch donations and store names separately
+      const { data: donationsData, error: donationsErr } = await supabase
         .from('donations')
-        .select(`
-          *,
-          stores ( name, address )
-        `)
+        .select('*')
         .eq('status', 'active')
         .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setDonations(data || [])
+  
+      if (donationsErr) throw donationsErr
+  
+      // Fetch store names for each donation
+      const storeIds = donationsData?.map(d => d.store_id).filter(Boolean) || []
+      let storeMap: Record<string, { name: string; address: string }> = {}
+      if (storeIds.length) {
+        const { data: storesData, error: storesErr } = await supabase
+          .from('stores')
+          .select('id, name, address')
+          .in('id', storeIds)
+        if (!storesErr) {
+          storesData?.forEach(s => {
+            storeMap[s.id] = { name: s.name, address: s.address }
+          })
+        }
+      }
+  
+      const mapped = donationsData?.map((d: any) => ({
+        ...d,
+        stores: storeMap[d.store_id] || { name: 'Unknown Store', address: 'No address' },
+      })) || []
+  
+      setDonations(mapped)
     } catch (err) {
       console.error(err)
-      toast.error('Failed to load free food listings')
+      toast.error('Could not load free food listings.')
     } finally {
       setLoading(false)
     }
   }
+       
 
   useEffect(() => {
     fetchDonations()
-
-    // Realtime: refresh on changes
     const channel = supabase
-      .channel('free-food')
+      .channel('free-food-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, fetchDonations)
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  // Claim handler
   const handleClaim = async (donationId: string, storeId: string, productName: string) => {
     if (!user) {
       toast.error('Please login first')
@@ -67,22 +86,20 @@ export const FreeFoodPage = () => {
 
     setClaiming(donationId)
 
-    // Get vendor user_id from store_staff
-    const { data: staff, error: staffErr } = await supabase
-      .from('store_staff')
-      .select('user_id')
-      .eq('store_id', storeId)
-      .limit(1)
-
-    if (staffErr || !staff || staff.length === 0) {
-      toast.error('Vendor not found for this donation.')
-      setClaiming(null)
-      return
-    }
-    const vendorId = staff[0].user_id
-
     try {
-      // Update donation
+      const { data: staff, error: staffErr } = await supabase
+        .from('store_staff')
+        .select('user_id')
+        .eq('store_id', storeId)
+        .maybeSingle()
+
+      if (staffErr) throw staffErr
+      if (!staff) {
+        toast.error('Vendor not found for this donation.')
+        return
+      }
+      const vendorId = staff.user_id
+
       const { error: updateErr } = await supabase
         .from('donations')
         .update({
@@ -93,7 +110,6 @@ export const FreeFoodPage = () => {
 
       if (updateErr) throw updateErr
 
-      // Notify vendor
       await supabase
         .from('notifications')
         .insert({
@@ -104,9 +120,10 @@ export const FreeFoodPage = () => {
         })
 
       toast.success('Donation claimed! Vendor will be notified.')
-      fetchDonations() // refresh list
+      fetchDonations()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to claim')
+      console.error(err)
+      toast.error(err.message || 'Failed to claim donation')
     } finally {
       setClaiming(null)
     }
@@ -117,7 +134,7 @@ export const FreeFoodPage = () => {
   return (
     <PageTransition className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2 mb-2">
           <Gift className="w-8 h-8 text-green-600" />
           <h1 className="text-3xl font-bold text-green-700">Free Food</h1>
         </div>
@@ -142,10 +159,12 @@ export const FreeFoodPage = () => {
                     <p>
                       <span className="font-medium">Store:</span> {d.stores?.name || 'Unknown'}
                     </p>
-                    <div className="flex items-center gap-1 text-gray-500">
-                      <MapPin className="w-4 h-4" />
-                      <span>{d.stores?.address || 'No address'}</span>
-                    </div>
+                    {d.stores?.address && (
+                      <div className="flex items-center gap-1 text-gray-500">
+                        <MapPin className="w-4 h-4" />
+                        <span>{d.stores.address}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1 text-gray-500">
                       <Clock className="w-4 h-4" />
                       <span>Expires: {new Date(d.expiry_date).toLocaleDateString()}</span>

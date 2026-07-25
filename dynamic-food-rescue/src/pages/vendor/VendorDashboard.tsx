@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+// src/pages/vendor/VendorDashboard.tsx
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
@@ -21,8 +22,9 @@ import {
   Trash2,
   X,
   DollarSign,
+  Crown,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import {
   LineChart,
   Line,
@@ -33,7 +35,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-
 
 // ---------- Stat Card ----------
 const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) => (
@@ -48,20 +49,12 @@ const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string
 
 // ---------- Main Component ----------
 export const VendorDashboard = () => {
-  // Setup state
-// Inside the component, after existing state declarations
-const [showSetup, setShowSetup] = useState(false)
-const [storeName, setStoreName] = useState('')
-const [storeAddress, setStoreAddress] = useState('')
-const [submitting, setSubmitting] = useState(false)
-
   const { user, signOut } = useAuth()
   const [storeId, setStoreId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-
-  // Sidebar state
-  const [activeTab, setActiveTab] = useState<'overview' | 'reservations' | 'history' | 'products' | 'donate'>('overview')
+  const [showSetup, setShowSetup] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [activeTab, setActiveTab] = useState<'overview' | 'reservations' | 'history' | 'products' | 'donate'>('overview')
 
   // Data states
   const [stats, setStats] = useState({ revenue: 0, orders: 0, rating: 0, deliveries: 0 })
@@ -83,18 +76,29 @@ const [submitting, setSubmitting] = useState(false)
     notes: '',
   })
 
+  // Store setup states
+  const [storeName, setStoreName] = useState('')
+  const [storeAddress, setStoreAddress] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  // Subscription states
+  const [subscription, setSubscription] = useState<any>(null)
+  const [checkingSubscription, setCheckingSubscription] = useState(true)
+
   // ---------- Fetch store ID ----------
   useEffect(() => {
     const fetchStore = async () => {
-      if (!user) return
+      if (!user) {
+        setLoading(false)
+        return
+      }
       const { data, error } = await supabase
         .from('store_staff')
         .select('store_id')
         .eq('user_id', user.id)
         .maybeSingle()
       if (error) {
-        console.error('Error fetching store staff:', error)
-        // Don't show toast here; just let the setup form appear
+        console.error('Store fetch error:', error)
         setShowSetup(true)
         setLoading(false)
         return
@@ -103,75 +107,103 @@ const [submitting, setSubmitting] = useState(false)
         setStoreId(data.store_id)
         setShowSetup(false)
       } else {
-        // No store staff → show setup form
         setShowSetup(true)
       }
       setLoading(false)
     }
     fetchStore()
   }, [user])
-  const handleSetup = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
-    if (!storeName.trim()) {
-      toast.error('Please enter a store name')
-      return
-    }
-  
-    setSubmitting(true)
-    try {
-      // 1. Create store
-      const { data: newStore, error: storeError } = await supabase
-        .from('stores')
-        .insert({
-          name: storeName.trim(),
-          address: storeAddress.trim() || 'Kathmandu, Nepal',
-          latitude: 27.7172,
-          longitude: 85.3240,
-        })
-        .select()
-        .single()
-      if (storeError) throw storeError
-  
-      // 2. Create store_staff record
-      const { error: staffError } = await supabase
-        .from('store_staff')
-        .insert({
-          user_id: user.id,
-          store_id: newStore.id,
-          role: 'manager',
-        })
-      if (staffError) throw staffError
-  
-      toast.success('Store created!')
-      setShowSetup(false)
-      setStoreId(newStore.id)
-      // Refresh data (fetchAnalytics, etc.)
-      fetchData()
-    } catch (err: any) {
-      console.error('Setup error:', err)
-      toast.error(err.message || 'Failed to create store')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-  // ---------- Fetch all data ----------
-  const fetchData = async () => {
-    if (!storeId) return
-    try {
-      await Promise.all([
-        fetchAnalytics(),
-        fetchReservations(),
-        fetchDonations(),
-      ])
-    } catch (err) {
-      console.error('Error fetching data:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  // ---------- Analytics ----------
+  // ---------- Subscription check ----------
+  useEffect(() => {
+    const checkSubscription = async () => {
+      if (!user) {
+        setCheckingSubscription(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('vendor_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (error) {
+        console.error('Subscription check error:', error)
+        setSubscription(null)
+        setCheckingSubscription(false)
+        return
+      }
+
+      const sub = data?.[0] || null
+      const now = new Date()
+
+      if (sub) {
+        if (sub.status === 'trial' && sub.trial_end_date && new Date(sub.trial_end_date) > now) {
+          setSubscription(sub)
+          setCheckingSubscription(false)
+          return
+        }
+        if (sub.status === 'active' && sub.end_date && new Date(sub.end_date) > now) {
+          setSubscription(sub)
+          setCheckingSubscription(false)
+          return
+        }
+        // Expired – update to new trial
+        try {
+          const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
+          const { data: updated, error: updateErr } = await supabase
+            .from('subscriptions')
+            .update({
+              status: 'trial',
+              trial_end_date: trialEnd.toISOString(),
+              start_date: new Date().toISOString(),
+              end_date: trialEnd.toISOString(),
+              plan_id: null,
+              payment_status: 'pending',
+              transaction_id: null,
+            })
+            .eq('id', sub.id)
+            .select()
+            .single()
+          if (updateErr) throw updateErr
+          setSubscription(updated)
+        } catch (err) {
+          console.error('Subscription update error:', err)
+          setSubscription(null)
+        }
+        setCheckingSubscription(false)
+        return
+      }
+
+      // No subscription – insert trial
+      try {
+        const trialEnd = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
+        const { data: newSub, error: insErr } = await supabase
+          .from('subscriptions')
+          .insert({
+            vendor_id: user.id,
+            status: 'trial',
+            trial_end_date: trialEnd.toISOString(),
+            start_date: new Date().toISOString(),
+            end_date: trialEnd.toISOString(),
+          })
+          .select()
+          .single()
+        if (insErr) throw insErr
+        setSubscription(newSub)
+      } catch (err) {
+        console.error('Trial creation error:', err)
+        setSubscription(null)
+      }
+      setCheckingSubscription(false)
+    }
+
+    checkSubscription()
+  }, [user])
+
+  // ---------- Data fetching ----------
   const fetchAnalytics = async () => {
     if (!storeId) return
     try {
@@ -216,7 +248,6 @@ const [submitting, setSubmitting] = useState(false)
     }
   }
 
-  // ---------- Reservations ----------
   const fetchReservations = async () => {
     if (!storeId) return
     try {
@@ -245,23 +276,23 @@ const [submitting, setSubmitting] = useState(false)
       }
 
       const { data: resData, error: resErr } = await supabase
-  .from('reservations')
-  .select(`
-    id,
-    pickup_code,
-    status,
-    payment_status,
-    paid_at,
-    created_at,
-    user_id,
-    delivery_address,
-    delivery_fee,
-    delivery_status,
-    inventory (products (name, original_price, current_discount)),
-    profiles!user_id (full_name)
-  `)
-  .in('inventory_id', inventoryIds)
-  .order('created_at', { ascending: false })
+        .from('reservations')
+        .select(`
+          id,
+          pickup_code,
+          status,
+          payment_status,
+          paid_at,
+          created_at,
+          user_id,
+          delivery_address,
+          delivery_fee,
+          delivery_status,
+          inventory (products (name, original_price, current_discount)),
+          profiles!user_id (full_name)
+        `)
+        .in('inventory_id', inventoryIds)
+        .order('created_at', { ascending: false })
       if (resErr) throw resErr
 
       setReservations(resData || [])
@@ -272,7 +303,6 @@ const [submitting, setSubmitting] = useState(false)
     }
   }
 
-  // ---------- Donations CRUD ----------
   const fetchDonations = async () => {
     if (!storeId) return
     try {
@@ -289,6 +319,55 @@ const [submitting, setSubmitting] = useState(false)
     }
   }
 
+  const fetchData = async () => {
+    if (!storeId) return
+    await Promise.all([fetchAnalytics(), fetchReservations(), fetchDonations()])
+  }
+
+  // ---------- Store setup ----------
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    if (!storeName.trim()) {
+      toast.error('Please enter a store name')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const { data: newStore, error: storeError } = await supabase
+        .from('stores')
+        .insert({
+          name: storeName.trim(),
+          address: storeAddress.trim() || 'Kathmandu, Nepal',
+          latitude: 27.7172,
+          longitude: 85.3240,
+        })
+        .select()
+        .single()
+      if (storeError) throw storeError
+
+      const { error: staffError } = await supabase
+        .from('store_staff')
+        .insert({
+          user_id: user.id,
+          store_id: newStore.id,
+          role: 'manager',
+        })
+      if (staffError) throw staffError
+
+      toast.success('Store created!')
+      setShowSetup(false)
+      setStoreId(newStore.id)
+      fetchData()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ---------- Donation CRUD ----------
   const handleAddDonation = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!storeId) return
@@ -386,7 +465,7 @@ const [submitting, setSubmitting] = useState(false)
     setIsFormOpen(true)
   }
 
-  // ---------- Actions: Update Status, Mark Paid, Send Note ----------
+  // ---------- Reservation actions ----------
   const updateStatus = async (id: string, status: string) => {
     try {
       const { error } = await supabase.from('reservations').update({ status }).eq('id', id)
@@ -407,7 +486,7 @@ const [submitting, setSubmitting] = useState(false)
       if (error) throw error
       toast.success('Marked as paid!')
       fetchReservations()
-      fetchAnalytics() // refresh revenue
+      fetchAnalytics()
     } catch (err: any) {
       toast.error(err.message)
     }
@@ -451,60 +530,57 @@ const [submitting, setSubmitting] = useState(false)
     return () => { supabase.removeChannel(channel) }
   }, [storeId])
 
+  // ---------- Conditional rendering (after all hooks) ----------
   if (loading) return <LoadingPage />
-  if (loading) return <LoadingPage />
-
-if (showSetup) {
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-center text-green-700">Set Up Your Store</h2>
-        <p className="text-center text-gray-500 text-sm mt-1">Create your store to start selling.</p>
-        <form onSubmit={handleSetup} className="space-y-4 mt-4">
-          <div>
-            <label className="block text-sm font-medium">Store Name *</label>
-            <input
-              type="text"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              placeholder="e.g. Fresh Mart"
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Address</label>
-            <input
-              type="text"
-              value={storeAddress}
-              onChange={(e) => setStoreAddress(e.target.value)}
-              placeholder="e.g. New Road, Kathmandu"
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-          >
-            {submitting ? 'Creating...' : 'Create Store & Continue'}
-          </button>
-        </form>
+  if (showSetup) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-center text-green-700">Set Up Your Store</h2>
+          <p className="text-center text-gray-500 text-sm mt-1">Create your store to start selling.</p>
+          <form onSubmit={handleSetup} className="space-y-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium">Store Name *</label>
+              <input
+                type="text"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                placeholder="e.g. Fresh Mart"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium">Address</label>
+              <input
+                type="text"
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
+                placeholder="e.g. New Road, Kathmandu"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {submitting ? 'Creating...' : 'Create Store & Continue'}
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (checkingSubscription) return <LoadingPage />
+if (!subscription) {
+  return <Navigate to="/vendor/subscribe" replace />
 }
 
-if (!storeId) {
-  return <div className="p-4 text-center">No store found. Please set up your store.</div>
-}
-
-  
-  // --- Existing: if no store (shouldn't happen if showSetup is false, but keep fallback) ---
   if (!storeId) {
     return <div className="p-4 text-center">No store found. Please set up your store.</div>
   }
-  if (!storeId) return <div className="p-4 text-center">No store found. Please set up your store.</div>
 
   // Sidebar nav items
   const navItems = [
@@ -513,34 +589,70 @@ if (!storeId) {
     { id: 'history', label: 'History', icon: <History className="w-5 h-5" /> },
     { id: 'products', label: 'Products', icon: <Package className="w-5 h-5" /> },
     { id: 'donate', label: 'Donate', icon: <Heart className="w-5 h-5" /> },
+
   ]
 
+  // ---------- Main render ----------
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white shadow-lg transition-all duration-300 flex flex-col`}>
+        
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className={`font-bold text-green-700 ${!sidebarOpen && 'hidden'}`}>Vendor Panel</h2>
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1 rounded hover:bg-gray-100">
             {sidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
           </button>
         </div>
+        <div className="px-4 py-2 text-xs text-gray-600 border-b">
+          {subscription?.status === 'trial' && (
+            <span className="text-yellow-600">
+              Trial: {Math.ceil((new Date(subscription.trial_end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days left
+            </span>
+          )}
+          {subscription?.status === 'active' && (
+            <span className="text-green-600">Plan: Premium</span>
+          )}
+        </div>
+        <Link to="/vendor/subscribe" className="...">Upgrade Plan</Link>
         <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
-              }`}
-            >
-              {item.icon}
-              <span className={sidebarOpen ? 'block' : 'hidden'}>{item.label}</span>
-            </button>
-          ))}
-        </nav>
+  {navItems.map((item) => (
+    <button
+      key={item.id}
+      onClick={() => setActiveTab(item.id as any)}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+        activeTab === item.id ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
+      }`}
+    >
+      {item.icon}
+      <span className={sidebarOpen ? 'block' : 'hidden'}>{item.label}</span>
+    </button>
+  ))}
+</nav>
+
+{/* 👇 NEW: Upgrade Plan link */}
+<Link
+  to="/vendor/subscribe"
+  className="w-full flex items-center gap-3 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+>
+  < Crown className="w-5 h-5" />
+  <span className={sidebarOpen ? 'block' : 'hidden'}>Upgrade Plan</span>
+</Link>
+
+<div className="p-4 border-t">
+  <button
+    onClick={signOut}
+    className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+  >
+    <LogOut className="w-5 h-5" />
+    <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
+  </button>
+</div>
         <div className="p-4 border-t">
-          <button onClick={signOut} className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg">
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+          >
             <LogOut className="w-5 h-5" />
             <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
           </button>
@@ -601,6 +713,7 @@ if (!storeId) {
                       <th className="px-4 py-2 text-left">User</th>
                       <th className="px-4 py-2 text-left">Status</th>
                       <th className="px-4 py-2 text-left">Payment</th>
+                      <th className="px-4 py-2 text-left">Type</th>
                       <th className="px-4 py-2 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -623,6 +736,20 @@ if (!storeId) {
                             </span>
                           </td>
                           <td className="px-4 py-2">
+                            {r.delivery_status === 'not_requested' ? (
+                              <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">Pickup</span>
+                            ) : (
+                              <div>
+                                <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">Delivery</span>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  <p>📍 {r.delivery_address || 'N/A'}</p>
+                                  <p>Fee: ₹{r.delivery_fee || 0}</p>
+                                  <p>Status: {r.delivery_status}</p>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-2">
                             <div className="flex flex-wrap gap-2">
                               {r.status === 'active' && (
                                 <button onClick={() => updateStatus(r.id, 'picked_up')} className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
@@ -634,24 +761,6 @@ if (!storeId) {
                                   <DollarSign className="w-4 h-4 inline mr-1" /> Mark Paid
                                 </button>
                               )}
-                              <td className="px-4 py-2">
-  {r.delivery_status === 'not_requested' ? (
-    <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-      Pickup
-    </span>
-  ) : (
-    <div>
-      <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
-        Delivery
-      </span>
-      <div className="text-xs text-gray-500 mt-1">
-        <p>📍 {r.delivery_address || 'N/A'}</p>
-        <p>Fee: ₹{r.delivery_fee || 0}</p>
-        <p>Status: {r.delivery_status}</p>
-      </div>
-    </div>
-  )}
-</td>
                               <div className="flex items-center gap-1">
                                 <input
                                   type="text"
@@ -685,7 +794,6 @@ if (!storeId) {
                 <p className="p-4 text-gray-500">No paid transactions yet.</p>
               ) : (
                 <table className="w-full text-sm">
-                  
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">Item</th>
@@ -817,8 +925,11 @@ if (!storeId) {
                       <label className="block text-sm font-medium">Quantity</label>
                       <input
                         type="number"
-                        value={donationForm.quantity}
-                        onChange={(e) => setDonationForm({ ...donationForm, quantity: Number(e.target.value) })}
+                        value={donationForm.quantity === 0 ? '' : donationForm.quantity}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : Number(e.target.value)
+                          setDonationForm({ ...donationForm, quantity: val })
+                        }}
                         required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       />

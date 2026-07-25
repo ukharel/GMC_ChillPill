@@ -4,6 +4,7 @@ import { Toaster } from 'sonner'
 import { LoadingPage } from '@/pages/LoadingPage'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useLocation } from 'react-router-dom'
+import { FreeFoodPage } from '@/pages/FreeFoodPage'
 
 // Public Pages
 import { LoginPage } from '@/pages/LoginPage'
@@ -21,6 +22,7 @@ import { ProductManagement } from '@/pages/vendor/ProductManagement'
 import { Withdraw } from '@/pages/vendor/Withdraw'
 
 import { PageTransition } from './components/PageTransition'
+import { SubscriptionPage } from '../src/pages/vendor/SuscriptionPage'
 
 const RoleGuard = ({ allowedRoles }: { allowedRoles: ('user' | 'vendor' | 'admin')[] }) => {
   const { user, role, isLoading } = useAuth()
@@ -48,6 +50,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route element={<RoleGuard allowedRoles={['user']} />}>
+            <Route path="/free-food" element={<FreeFoodPage />} />
             <Route path="/" element={<DealsPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/reserve/:inventoryId" element={<ReservationPage />} />
@@ -55,6 +58,7 @@ function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
           <Route element={<RoleGuard allowedRoles={['vendor', 'admin']} />}>
+          <Route path="/vendor/subscribe" element={<SubscriptionPage />} />
             <Route path="/vendor/dashboard" element={<VendorDashboard />} />
             <Route path="/vendor/products" element={<ProductManagement />} />
           </Route>
