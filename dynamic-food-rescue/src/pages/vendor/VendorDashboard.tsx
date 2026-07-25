@@ -614,7 +614,7 @@ if (!subscription) {
             <span className="text-green-600">Plan: Premium</span>
           )}
         </div>
-        <Link to="/vendor/subscribe" className="...">Upgrade Plan</Link>
+        {/* <Link to="/vendor/subscribe" className="...">Upgrade Plan</Link> */}
         <nav className="flex-1 p-4 space-y-2">
   {navItems.map((item) => (
     <button
@@ -648,15 +648,8 @@ if (!subscription) {
     <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
   </button>
 </div>
-        <div className="p-4 border-t">
-          <button
-            onClick={signOut}
-            className="w-full flex items-center gap-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className={sidebarOpen ? 'block' : 'hidden'}>Logout</span>
-          </button>
-        </div>
+        
+        
       </aside>
 
       {/* Main Content */}
